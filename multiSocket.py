@@ -3,6 +3,12 @@ from threading import Thread
 import multiprocessing as mp
 import json
 from _thread import start_new_thread
+import netifaces
+
+selfIpAddrs = []
+for interface in netifaces.interfaces():
+    if 2 in list(netifaces.ifaddresses(interface).keys()):
+        selfIpAddrs.append(netifaces.ifaddresses(interface)[2][0]['addr'])
 
 global TCPIPMap # {ip:tcpObject}
 TCPIPMap = {}
@@ -85,11 +91,12 @@ class MultiSocket:
 
     def readIncomingUDP(self):
         while True:
-            data = self.sock.recv(1024)
-            if self.msgCb:
-                self.msgCb(data)
-            else:
-                print("CB ERR:",data)
+            data, address = self.sock.recvfrom(1024)
+            if address[0] not in selfIpAddrs:
+                if self.msgCb:
+                    self.msgCb(data)
+                else:
+                    print("CB ERR:",data)
 
     def readOutgoing(self):
         while True:
