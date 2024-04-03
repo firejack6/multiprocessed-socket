@@ -56,8 +56,7 @@ class MultiSocket:
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
             self.sock.bind((self.host, self.port))
-            if self.logMsgs:
-                print(self.socketTypeStr + " socket created on: ", self.host, ":", self.port)
+            print(self.socketTypeStr + " socket created on: ", self.host, ":", self.port)
 
             inboundThread = Thread(target=self.readIncomingUDP)
             inboundThread.start()
@@ -97,7 +96,8 @@ class MultiSocket:
             data = self.pipeChild.recv()
             jsonMsg = json.loads(data)
             jsonKeys = list(jsonMsg.keys())
-            print("LINE 105: ",jsonMsg)
+            if self.logMsgs:
+                print("LINE 105: ",jsonMsg)
 
             msg = jsonMsg["msg"]
             if "IP" in jsonKeys:
@@ -110,11 +110,17 @@ class MultiSocket:
             if self.socketTypeStr == "TCP":
                 msg = addHeader(msg)
                 if ip in TCPIPMap:
-                    TCPIPMap[ip].sendall(msg)
+                    try:
+                        TCPIPMap[ip].sendall(msg)
+                    except Exception as e:
+                        print("115",e)
+                        print(ip)
+                        if self.statCb:
+                            self.statCb("DISCONNECTED", ip)
                 else:
                     print("NO ROLE OR CONNECTION TO: ",ip)
             else: 
-                self.sock.sendto(msg, (ip, port))
+                self.sock.sendto(msg.encode(), (ip, port))
 
     def send(self, msg, address,**kwargs):
         port = kwargs.get("sendToPort")
@@ -136,11 +142,16 @@ class MultiSocket:
         TCPIPMap[addr[0]] = conn
         self.statCb("CONNECTED", addr[0])
         while True:
-            data = conn.recv(1048)
+            try:
+                data = conn.recv(1048)
+            except:
+                if self.statCb:
+                    self.statCb("DISCONNECTED", addr[0])
+                break
             self.msgCb(data, addr=addr[0])
             if not data:
                 if self.statCb:
-                    self.statCb("DISCONNECT", addr[0])
+                    self.statCb("DISCONNECTED", addr[0])
                 break
 
             # data = conn.recv(2)
