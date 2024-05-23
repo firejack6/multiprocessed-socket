@@ -37,6 +37,18 @@ def addHeader(msg):
         return bz
     except Exception as e:
         print("ADDHEADER: ",e)
+        
+def passMsgsFn(self):
+        """
+            Passes messages from child process back to the original process, where the message callback is.
+        """
+        def __init__(self):
+            self.parent = self
+            
+        while True:
+            msg = self.parent.mainProcPipe.recv()
+            # print("64", msg)
+            self.msgCb(msg['msg'], addr=msg['addr'][0], port=msg['addr'][1])
 
 class MultiSocket:
     def __init__(self, host, port, socketType, **kwargs):
@@ -66,17 +78,10 @@ class MultiSocket:
         self.createProc()
         
         if(self.msgCb):
-            self.passMsgs = Thread(target=self.passMsgsFn)
+            self.passMsgs = Thread(target=passMsgsFn, args=())
             self.passMsgs.start() 
         
-    def passMsgsFn(self):
-        """
-            Passes messages from child process back to the original process, where the message callback is.
-        """
-        while True:
-            msg = self.mainProcPipe.recv()
-            # print("64", msg)
-            self.msgCb(msg['msg'], addr=msg['addr'][0], port=msg['addr'][1])
+    
 
     def createProc(self):
         proc = mp.Process(target=self.createSocket, args=())

@@ -1,4 +1,4 @@
-from multiSocket import MultiSocket
+from multiprocessed_socket import MultiSocket
 import time
 import queue
 
@@ -34,7 +34,7 @@ def conStat(stat, addr):
 
 
 if __name__ == '__main__':
-    Sock = MultiSocket("0.0.0.0", 12345, "TCP", logMsgs=True, msgCb=out, connectStatusCb=conStat)
+    Sock = MultiSocket("0.0.0.0", 12345, "UDP", logMsgs=True, msgCb=out, connectStatusCb=conStat)
     while True:
         # time.sleep(3)
         # udpSock.send("Hello World", sendToIp="192.168.1.223")

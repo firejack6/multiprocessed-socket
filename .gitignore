@@ -1,2 +1,3 @@
 .venv/**
 __pycache__
+multiprocessed_socket.egg-info/**
