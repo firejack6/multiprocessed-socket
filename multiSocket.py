@@ -40,6 +40,17 @@ def addHeader(msg):
 
 class MultiSocket:
     def __init__(self, host, port, socketType, **kwargs):
+        """ Creates a socket in a separate process
+        
+        Args:
+            host (str): IP address to bind to
+            port (int): Port to bind to
+            socketType (str): "TCP" or "UDP"
+            **logMsgs (bool): log incoming messages in console
+            **msgCb (function): callback for incoming messages
+            **connectStatusCb (function): callback for connection status changes
+        """
+        
         self.host = host
         self.port = port
         self.socketTypeObj = retSocketType(socketType)
@@ -48,8 +59,24 @@ class MultiSocket:
         self.logMsgs = kwargs.get("logMsgs")
         self.msgCb = kwargs.get("msgCb")
         self.statCb = kwargs.get("connectStatusCb")
+        
+        if(self.msgCb):
+            self.mainProcPipe, self.toMainProc = mp.Pipe(False)
 
         self.createProc()
+        
+        if(self.msgCb):
+            self.passMsgs = Thread(target=self.passMsgsFn)
+            self.passMsgs.start() 
+        
+    def passMsgsFn(self):
+        """
+            Passes messages from child process back to the original process, where the message callback is.
+        """
+        while True:
+            msg = self.mainProcPipe.recv()
+            # print("64", msg)
+            self.msgCb(msg['msg'], addr=msg['addr'][0], port=msg['addr'][1])
 
     def createProc(self):
         proc = mp.Process(target=self.createSocket, args=())
@@ -73,6 +100,7 @@ class MultiSocket:
         elif(self.socketTypeStr == "TCP"):
             global TCPComeUp
             TCPComeUp = False
+
             while TCPComeUp == False:
                 try:
                     self.sock.bind((self.host, self.port))
@@ -90,17 +118,27 @@ class MultiSocket:
 
 
     def readIncomingUDP(self):
+        """
+            Reads incoming UDP packets, sends to original process if callback specified.
+        """
         while True:
             data, address = self.sock.recvfrom(1024)
-            if address[0] not in selfIpAddrs:
+            if address[0] not in selfIpAddrs: # Sent messages show up as received sometimes, exclude that
                 if self.msgCb:
-                    self.msgCb(data)
+                    passThrough = {}
+                    passThrough["msg"] = data.decode()
+                    passThrough["addr"] = address
+                    self.toMainProc.send(passThrough)
                 else:
-                    print("CB ERR:",data)
+                    print("CB ERR:",passThrough)
 
     def readOutgoing(self):
+        """
+            Reads messages from the main process and sends them out.
+        """
         while True:
             data = self.pipeChild.recv()
+            # print("121: ",data)
             jsonMsg = json.loads(data)
             jsonKeys = list(jsonMsg.keys())
             if self.logMsgs:
@@ -129,7 +167,16 @@ class MultiSocket:
             else: 
                 self.sock.sendto(msg.encode(), (ip, port))
 
-    def send(self, msg, address,**kwargs):
+    def send(self, msg, address, **kwargs):
+        """
+            Sends a message to the specified address.
+
+        Args:
+            msg (str): message to send
+            address (str): ip address to send to
+            **sendToPort (int): port to send to, defaults to the port the socket was created on
+        """
+        # print("152 ", msg, address)
         port = kwargs.get("sendToPort")
         if port == None:
             port = self.port
@@ -137,6 +184,9 @@ class MultiSocket:
         self.pipeMain.send(json.dumps({"msg":msg, "IP":address, "PORT":port}))
         
     def tcpConnHandler(self):
+        """
+            Handles incoming TCP connections by creating a new thread for each connection.
+        """
         while True:
             TCPConnection, address = self.sock.accept()
             # if self.statCb:
@@ -155,7 +205,10 @@ class MultiSocket:
                 if self.statCb:
                     self.statCb("DISCONNECTED", addr[0])
                 break
-            self.msgCb(data, addr=addr[0])
+            passThrough = {}
+            passThrough["msg"] = data.decode()
+            passThrough["addr"] = addr
+            self.toMainProc.send(passThrough)
             if not data:
                 if self.statCb:
                     self.statCb("DISCONNECTED", addr[0])
